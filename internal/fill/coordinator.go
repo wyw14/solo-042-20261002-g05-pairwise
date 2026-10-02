@@ -116,6 +116,81 @@ func (c *Coordinator) StartManual(ctx context.Context, vesselID string, liters f
 	return c.Start(ctx, vesselID, model.FillManual, liters)
 }
 
+// StartWithPlan starts a manual fill using identities a two-person release
+// pre-authorised. It refuses if the selected circuit is not the one bound to
+// the release or its reservation generation differs from the sign-off view.
+func (c *Coordinator) StartWithPlan(ctx context.Context, plan model.ReleaseFillPlan) (model.FillSession, error) {
+	if err := plan.Validate(); err != nil {
+		return model.FillSession{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, exists := c.active[plan.VesselID]; exists {
+		return model.FillSession{}, ErrActiveSession
+	}
+	selected, ok := c.circuitList.Get(plan.CircuitID)
+	if !ok {
+		return model.FillSession{}, errors.New("release circuit is not configured")
+	}
+	if !selected.Enabled {
+		return model.FillSession{}, errors.New("release circuit is disabled")
+	}
+	if selected.ValveID != plan.ExpectedValveID {
+		return model.FillSession{}, errors.New("circuit valve changed since the release was confirmed")
+	}
+	session, err := model.NewFillSessionWithID(plan.FillSessionID, plan.VesselID, model.FillManual, 1, plan.PlannedLiters, c.now())
+	if err != nil {
+		return model.FillSession{}, err
+	}
+	reservation, err := c.circuits.Reserve(selected.ID, plan.VesselID, session.ID, c.now())
+	if err != nil {
+		return model.FillSession{}, err
+	}
+	if reservation.Generation != plan.ExpectedGeneration {
+		_ = c.circuits.Release(selected.ID, session.ID)
+		return model.FillSession{}, errors.New("circuit state changed since the release was confirmed")
+	}
+	session = session.WithCircuit(selected.ID, c.now())
+	session, err = session.Transition(model.FillPrechecking, c.now())
+	if err != nil {
+		_ = c.circuits.Release(selected.ID, session.ID)
+		return model.FillSession{}, err
+	}
+	if _, err := c.vessels.BeginFill(plan.VesselID); err != nil {
+		_ = c.circuits.Release(selected.ID, session.ID)
+		return model.FillSession{}, err
+	}
+	route := valve.Route{
+		SessionID:         session.ID,
+		CircuitID:         selected.ID,
+		CircuitGeneration: reservation.Generation,
+		ValveID:           selected.ValveID,
+		OpenCommandID:     plan.OpenCommandID,
+		CloseCommandID:    plan.CloseCommandID,
+	}
+	var openErr error
+	if c.retry != nil {
+		_, openErr = c.retry.OpenCommand(ctx, plan.OpenCommandID, session.ID, reservation.Generation, selected.ValveID)
+		if openErr == nil {
+			openErr = c.routes.TrackOpen(route)
+		}
+	} else {
+		openErr = c.routes.Open(ctx, route)
+	}
+	if openErr != nil {
+		_, _ = c.vessels.FinishFill(plan.VesselID)
+		_ = c.circuits.Release(selected.ID, session.ID)
+		return model.FillSession{}, openErr
+	}
+	session, err = session.Transition(model.FillFilling, c.now())
+	if err != nil {
+		return model.FillSession{}, err
+	}
+	c.sessions[session.ID] = session
+	c.active[plan.VesselID] = session.ID
+	return session, nil
+}
+
 func (c *Coordinator) BeginSoak(sessionID uuid.UUID) (model.FillSession, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

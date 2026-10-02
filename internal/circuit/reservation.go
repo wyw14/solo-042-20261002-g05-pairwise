@@ -108,3 +108,16 @@ func (m *Manager) Get(circuitID string) (Reservation, bool) {
 	reservation, ok := m.reservations[circuitID]
 	return reservation, ok
 }
+
+// NextGeneration reports the generation the next successful Reserve would
+// assign. A confirmed release binds to that value so a reservation/release
+// cycle between sign-off and execution is detectable as a circuit change.
+func (m *Manager) NextGeneration(circuitID string) (uint64, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	generation, ok := m.generations[circuitID]
+	if !ok {
+		return 0, false
+	}
+	return generation + 1, true
+}

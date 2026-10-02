@@ -28,7 +28,13 @@ func NewRetryService(commands *valve.CommandService, policy RetryPolicy) (*Retry
 }
 
 func (s *RetryService) Open(ctx context.Context, sessionID uuid.UUID, generation uint64, valveID string) (model.ValveReceipt, error) {
-	commandID := uuid.New()
+	return s.OpenCommand(ctx, uuid.New(), sessionID, generation, valveID)
+}
+
+// OpenCommand retries opening a valve with a caller-assigned command id. Used
+// by pre-authorised releases, which journal the command identity before the
+// command is issued.
+func (s *RetryService) OpenCommand(ctx context.Context, commandID, sessionID uuid.UUID, generation uint64, valveID string) (model.ValveReceipt, error) {
 	var lastErr error
 	for attempt := 0; attempt < s.policy.Attempts; attempt++ {
 		receipt, err := s.commands.Open(ctx, commandID, sessionID, generation, valveID)

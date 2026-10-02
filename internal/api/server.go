@@ -9,6 +9,7 @@ import (
 	"github.com/wyw14/cry-98/internal/fill"
 	"github.com/wyw14/cry-98/internal/monitor"
 	"github.com/wyw14/cry-98/internal/probe"
+	"github.com/wyw14/cry-98/internal/release"
 	"github.com/wyw14/cry-98/internal/telemetry"
 	"github.com/wyw14/cry-98/internal/transfer"
 	"github.com/wyw14/cry-98/internal/vessel"
@@ -17,6 +18,7 @@ import (
 type Dependencies struct {
 	Vessels        *vessel.Registry
 	Fills          *fill.Service
+	Releases       *release.Service
 	Alarms         *alarm.Service
 	Probes         *probe.Registry
 	ProbeLifecycle *probe.Lifecycle
@@ -61,6 +63,12 @@ func (s *Server) routes() chi.Router {
 		api.Post("/fill-sessions/{id}/complete", s.completeFill)
 		api.Post("/fill-sessions/{id}/abort", s.abortFill)
 		api.Post("/fill-sessions/{id}/recover-isolation", s.recoverFillIsolation)
+		api.Get("/releases", s.listReleases)
+		api.Post("/releases", s.proposeRelease)
+		api.Get("/releases/{id}", s.getRelease)
+		api.Get("/releases/{id}/review", s.reviewRelease)
+		api.Post("/releases/{id}/confirm", s.confirmRelease)
+		api.Post("/releases/{id}/consume", s.consumeRelease)
 		api.Get("/alarms", s.listAlarms)
 		api.Post("/alarms", s.raiseAlarm)
 		api.Post("/alarms/{id}/acknowledge", s.acknowledgeAlarm)

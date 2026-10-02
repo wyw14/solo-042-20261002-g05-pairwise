@@ -13,6 +13,7 @@ type config struct {
 	ShutdownTimeout   time.Duration
 	ProbeStaleAfter   time.Duration
 	NotificationRetry time.Duration
+	Operators         string
 }
 
 func loadConfig() (config, error) {
@@ -33,5 +34,6 @@ func loadConfig() (config, error) {
 		ShutdownTimeout:   10 * time.Second,
 		ProbeStaleAfter:   2 * time.Minute,
 		NotificationRetry: 5 * time.Second,
+		Operators:         os.Getenv("CRYOSAFE_OPERATORS"),
 	}, nil
 }

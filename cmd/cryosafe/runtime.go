@@ -16,8 +16,10 @@ import (
 	"github.com/wyw14/cry-98/internal/model"
 	"github.com/wyw14/cry-98/internal/monitor"
 	"github.com/wyw14/cry-98/internal/notify"
+	"github.com/wyw14/cry-98/internal/operator"
 	"github.com/wyw14/cry-98/internal/pressure"
 	"github.com/wyw14/cry-98/internal/probe"
+	"github.com/wyw14/cry-98/internal/release"
 	"github.com/wyw14/cry-98/internal/telemetry"
 	"github.com/wyw14/cry-98/internal/transfer"
 	"github.com/wyw14/cry-98/internal/valve"
@@ -161,6 +163,20 @@ func buildRuntime(cfg config, now func() time.Time) (*runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	operatorDirectory, _, err := operator.DirectoryFromConfig(cfg.Operators)
+	if err != nil {
+		return nil, err
+	}
+	releaseService, err := release.NewService(
+		store, operatorDirectory, vesselRegistry, circuitRegistry, circuitManager, fillCoordinator, now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := releaseService.Recover(); err != nil {
+		return nil, err
+	}
 	if err := ingestor.AddObserver(func(sample model.Sample) {
 		if sample.Kind == model.ProbeLevel && sample.Value < 20 {
 			_, _ = fillService.OnLowLevel(context.Background(), sample.VesselID, sample.ObservedAt)
@@ -196,6 +212,7 @@ func buildRuntime(cfg config, now func() time.Time) (*runtime, error) {
 	apiServer := api.NewServer(api.Dependencies{
 		Vessels:        vesselRegistry,
 		Fills:          fillService,
+		Releases:       releaseService,
 		Alarms:         alarmService,
 		Probes:         probeRegistry,
 		ProbeLifecycle: probeLifecycle,

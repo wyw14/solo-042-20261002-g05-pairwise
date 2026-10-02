@@ -41,6 +41,15 @@ type FillSession struct {
 }
 
 func NewFillSession(vesselID string, origin FillOrigin, generation uint64, liters float64, now time.Time) (FillSession, error) {
+	return NewFillSessionWithID(uuid.New(), vesselID, origin, generation, liters, now)
+}
+
+// NewFillSessionWithID creates a session with a caller-assigned id, used when
+// the identity must be journaled before the session exists (field releases).
+func NewFillSessionWithID(id uuid.UUID, vesselID string, origin FillOrigin, generation uint64, liters float64, now time.Time) (FillSession, error) {
+	if id == uuid.Nil {
+		return FillSession{}, errors.New("fill session id is required")
+	}
 	if vesselID == "" || generation == 0 || liters <= 0 {
 		return FillSession{}, errors.New("invalid fill session parameters")
 	}
@@ -48,7 +57,7 @@ func NewFillSession(vesselID string, origin FillOrigin, generation uint64, liter
 		return FillSession{}, errors.New("invalid fill origin")
 	}
 	return FillSession{
-		ID:            uuid.New(),
+		ID:            id,
 		VesselID:      vesselID,
 		Origin:        origin,
 		State:         FillCreated,
