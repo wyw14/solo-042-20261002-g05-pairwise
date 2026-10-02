@@ -9,6 +9,7 @@ import (
 	"github.com/wyw14/cry-98/internal/fill"
 	"github.com/wyw14/cry-98/internal/monitor"
 	"github.com/wyw14/cry-98/internal/probe"
+	"github.com/wyw14/cry-98/internal/release"
 	"github.com/wyw14/cry-98/internal/telemetry"
 	"github.com/wyw14/cry-98/internal/transfer"
 	"github.com/wyw14/cry-98/internal/vessel"
@@ -26,6 +27,7 @@ type Dependencies struct {
 	Health         *monitor.HealthService
 	ProbeMonitor   *monitor.ProbeMonitor
 	Suppressions   *alarm.SuppressionService
+	Releases       *release.Service
 	Now            func() time.Time
 }
 
@@ -69,6 +71,14 @@ func (s *Server) routes() chi.Router {
 		api.Get("/probes", s.listProbes)
 		api.Post("/probes/{id}/samples", s.publishProbeSample)
 		api.Post("/probes/{id}/rebind", s.rebindProbe)
+		api.Get("/releases", s.listReleases)
+		api.Post("/releases", s.submitRelease)
+		api.Get("/releases/{id}", s.getRelease)
+		api.Post("/releases/{id}/inspect", s.inspectRelease)
+		api.Post("/releases/{id}/endorse", s.endorseRelease)
+		api.Post("/releases/{id}/reject", s.rejectRelease)
+		api.Post("/releases/{id}/consume", s.consumeRelease)
+		api.Post("/releases/{id}/finish", s.finishRelease)
 	})
 	return router
 }

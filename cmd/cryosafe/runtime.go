@@ -18,6 +18,7 @@ import (
 	"github.com/wyw14/cry-98/internal/notify"
 	"github.com/wyw14/cry-98/internal/pressure"
 	"github.com/wyw14/cry-98/internal/probe"
+	"github.com/wyw14/cry-98/internal/release"
 	"github.com/wyw14/cry-98/internal/telemetry"
 	"github.com/wyw14/cry-98/internal/transfer"
 	"github.com/wyw14/cry-98/internal/valve"
@@ -149,6 +150,23 @@ func buildRuntime(cfg config, now func() time.Time) (*runtime, error) {
 	}
 	commandService := valve.NewCommandService(valveController, now)
 	routeService := valve.NewRouteService(commandService)
+
+	credentials := release.NewCredentialStore()
+	for _, reviewer := range cfg.Reviewers {
+		if err := credentials.Register(reviewer.ID, reviewer.Secret); err != nil {
+			return nil, err
+		}
+	}
+	releaseService, err := release.NewService(
+		credentials, vesselRegistry, circuitRegistry, circuitManager, routeService, store, now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := releaseService.Restore(); err != nil {
+		return nil, err
+	}
+
 	fillCoordinator := fill.NewCoordinator(circuitManager, circuitRegistry, routeService, vesselState, now)
 	retryService, err := fill.NewRetryService(commandService, fill.RetryPolicy{Attempts: 3, Delay: 100 * time.Millisecond})
 	if err != nil {
@@ -205,6 +223,7 @@ func buildRuntime(cfg config, now func() time.Time) (*runtime, error) {
 		Health:         healthService,
 		ProbeMonitor:   probeMonitor,
 		Suppressions:   suppressions,
+		Releases:       releaseService,
 		Now:            now,
 	})
 	server := &http.Server{
